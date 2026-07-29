@@ -39,11 +39,11 @@ def ingest_documents_to_qdrant():
     # 1. Create collection if it doesn't exist
     collections = [c.name for c in client.get_collections().collections]
     if collection_name not in collections:
-        print(f"Creating Qdrant collection '{collection_name}' (384 dim)...")
+        print(f"Creating Qdrant collection '{collection_name}' (512 dim)...")
         client.create_collection(
             collection_name=collection_name,
             vectors_config=models.VectorParams(
-                size=384,
+                size=512,
                 distance=models.Distance.COSINE,
             ),
         )
@@ -73,8 +73,19 @@ def ingest_documents_to_qdrant():
                 continue
 
             texts = [c.text for c in chunks]
-            print("  Generating 384d BGE embeddings...")
-            vectors = embedder.embed_documents(texts)
+            print("  Generating 512d Google Gemini Embedding 2 vectors...")
+            try:
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                api_key = os.environ.get("GOOGLE_API_KEY") or getattr(settings, "google_api_key", None) or getattr(settings, "gemni_api_key", None)
+                gemini_embed = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-2",
+                    google_api_key=api_key,
+                    output_dimensionality=512,
+                )
+                vectors = gemini_embed.embed_documents(texts)
+            except Exception as exc:
+                print(f"  Gemini API embedding error: {exc}, using embedder fallback...")
+                vectors = embedder.embed_documents(texts)
 
             points = []
             for i, (chunk, vector) in enumerate(zip(chunks, vectors)):

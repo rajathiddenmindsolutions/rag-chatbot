@@ -39,7 +39,7 @@ interface DocumentItem {
 export function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputQuery, setInputQuery] = useState('');
-  const [strategy, setStrategy] = useState<string>('structural');
+  const [strategy, setStrategy] = useState<string>('semantic');
   const [provider, setProvider] = useState<string>('groq');
   const [isLoading, setIsLoading] = useState(false);
   const [_, setCitations] = useState<Citation[]>([]);
@@ -309,18 +309,6 @@ export function App() {
                 <span className="truncate">Active RAG Session</span>
               </div>
             </div>
-
-            {/* User Profile Footer */}
-            <div className="pt-2 border-t border-[#383838] flex items-center gap-2.5 px-2">
-              <div className="w-7 h-7 rounded-full bg-[#ab68ff] flex items-center justify-center text-white font-bold text-xs">
-                U
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-medium text-white">Local User</span>
-                <span className="text-[10px] text-[#8e8e8e]">Open-WebUI v0.5.0</span>
-              </div>
-            </div>
-
           </div>
         )}
       </div>

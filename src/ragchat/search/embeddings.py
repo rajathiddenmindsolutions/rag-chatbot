@@ -1,4 +1,4 @@
-"""Embedding module supporting Local BAAI/bge-small-en-v1.5 and Production FastEmbed 384d Embeddings.
+"""Embedding module supporting Local BAAI/bge-small-en-v1.5 and Production Google Gemini Embedding 2 (512d).
 """
 
 from typing import List
@@ -10,7 +10,6 @@ from ragchat.config import settings
 logger = structlog.get_logger(__name__)
 
 _LOCAL_MODEL = None
-_FASTEMBED_MODEL = None
 
 
 def get_embedding_model():
@@ -24,30 +23,26 @@ def get_embedding_model():
     return _LOCAL_MODEL
 
 
-def get_fastembed_model():
-    """Return lightweight 384d FastEmbed model instance for Qdrant compatibility."""
-    global _FASTEMBED_MODEL
-    if _FASTEMBED_MODEL is None:
-        from fastembed import TextEmbedding
-        logger.info("loading_fastembed_384d_model")
-        _FASTEMBED_MODEL = TextEmbedding("BAAI/bge-small-en-v1.5")
-    return _FASTEMBED_MODEL
-
-
 class LocalEmbeddings(Embeddings):
-    """Router for local BAAI embeddings vs Production 384d FastEmbed API embeddings."""
+    """Router for local BAAI embeddings vs Production Google Gemini Embedding 2 (512d)."""
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
 
-        # Production Cloud Routing (384d FastEmbed matching Qdrant)
+        # Production Cloud Routing (Google Gemini Embedding 2 with 512d matching Qdrant)
         if getattr(settings, "app_env", "dev").lower() in ("prod", "production"):
             try:
-                model = get_fastembed_model()
-                return [list(vec) for vec in model.embed(texts)]
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                api_key = settings.google_api_key or getattr(settings, "gemni_api_key", None)
+                gemini_embed = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-2",
+                    google_api_key=api_key,
+                    output_dimensionality=512,
+                )
+                return gemini_embed.embed_documents(texts)
             except Exception as exc:
-                logger.warning("fastembed_failed_using_local_fallback", error=str(exc))
+                logger.warning("gemini_embedding_failed_using_local_fallback", error=str(exc))
 
         # Local Execution (Default BAAI/bge-small-en-v1.5)
         model = get_embedding_model()
@@ -61,15 +56,22 @@ class LocalEmbeddings(Embeddings):
         if cached_vector is not None:
             return cached_vector
 
-        # Production Cloud Routing (384d FastEmbed matching Qdrant)
+        # Production Cloud Routing (Google Gemini Embedding 2 with 512d matching Qdrant)
         if getattr(settings, "app_env", "dev").lower() in ("prod", "production"):
             try:
-                model = get_fastembed_model()
-                embedding = list(next(model.embed([text])))
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                api_key = settings.google_api_key or getattr(settings, "gemni_api_key", None)
+                gemini_embed = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-2",
+                    google_api_key=api_key,
+                    output_dimensionality=512,
+                )
+                formatted_query = f"task: search result | query: {text}"
+                embedding = gemini_embed.embed_query(formatted_query)
                 rag_cache.set_embedding(text, embedding)
                 return embedding
             except Exception as exc:
-                logger.warning("fastembed_failed_using_local_fallback", error=str(exc))
+                logger.warning("gemini_embedding_failed_using_local_fallback", error=str(exc))
 
         # Local Execution (Default BAAI/bge-small-en-v1.5)
         model = get_embedding_model()

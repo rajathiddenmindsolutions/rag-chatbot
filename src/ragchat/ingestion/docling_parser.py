@@ -2,8 +2,6 @@
 
 import json
 from pathlib import Path
-import structlog
-from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
 
 logger = structlog.get_logger(__name__)

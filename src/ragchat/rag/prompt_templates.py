@@ -9,16 +9,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # ---------------------------------------------------------------------------
 # 1. CASUAL CONVERSATION
-#    Used by: casual_response_node
-#    Purpose: Respond naturally to greetings, small talk, general knowledge
-#             questions (recipes, jokes, math) that do NOT need document search.
 # ---------------------------------------------------------------------------
 
 CASUAL_SYSTEM = (
-    "You are a friendly, knowledgeable, and helpful AI assistant. "
+    "You are a friendly, intelligent, and helpful AI assistant. "
     "You can answer general knowledge questions, engage in small talk, "
-    "tell jokes, give recipes, and assist with a wide range of topics. "
-    "Be warm, concise, and natural in your responses."
+    "explain concepts, and assist with a wide range of topics. "
+    "Format your responses cleanly with distinct line breaks, bold text, and bullet points where helpful."
 )
 
 CASUAL_PROMPT = ChatPromptTemplate.from_messages([
@@ -29,34 +26,22 @@ CASUAL_PROMPT = ChatPromptTemplate.from_messages([
 
 
 # ---------------------------------------------------------------------------
-# 2. QUERY ROUTING / DECISION
-#    Used by: classify_query_node (inline string, not a ChatPromptTemplate)
-#    Purpose: Decide if we need to search documents or answer directly.
-#
-#    NOTE: This prompt is built inline in classify_query_node because it
-#    uses a single f-string without history context. Keeping the canonical
-#    wording here as DECISION_PROMPT_TEMPLATE for documentation / future use.
+# 2. UNIVERSAL QUERY ROUTING / DECISION
 # ---------------------------------------------------------------------------
 
 DECISION_PROMPT_TEMPLATE = (
-    "You are a query router for an intelligent AI assistant.\n\n"
+    "You are a universal query router for an enterprise RAG assistant.\n\n"
     "Categorize the user's question into EXACTLY ONE of three categories:\n\n"
     "Answer RETRIEVE if:\n"
-    "  - The question is about technical topics covered in the uploaded local documents (e.g. machine learning, database indexing, code cheat sheets, system design)\n"
-    "  - The user explicitly asks about uploaded PDFs or technical document context\n\n"
+    "  - The question is about company details, services, team, projects, statistics, architecture, or any facts covered in uploaded documents or knowledge base\n"
+    "  - The user asks about specific organization information, technical specifications, or uploaded PDF documents\n\n"
     "Answer WEB if:\n"
-    "  - The question is about real-world facts, current news, live events, companies, or political figures (e.g. 'Who is the Chief Minister of Tamil Nadu?', 'What is the stock price of Apple?', 'Latest AI news')\n"
-    "  - The question requires real-time Google web search information\n\n"
+    "  - The question is about real-time live facts, current news, live stock prices, or recent world events\n"
+    "  - The question explicitly requests real-time web search information\n\n"
     "Answer RESPOND if:\n"
-    "  - The question is a greeting or small talk (e.g. 'hi', 'how are you')\n"
+    "  - The question is a greeting or small talk (e.g. 'hi', 'hello', 'how are you')\n"
     "  - The question is about general math or simple conversational queries\n"
     "  - The question is about the assistant itself\n\n"
-    "Examples:\n"
-    "  'What is HNSW vector indexing?' -> RETRIEVE\n"
-    "  'Who is the current CM of Tamil Nadu?' -> WEB\n"
-    "  'What is the capital of France?' -> WEB\n"
-    "  'Hi there!' -> RESPOND\n"
-    "  'What is 2 + 2?' -> RESPOND\n\n"
     "User question: \"{question}\"\n\n"
     "Answer with EXACTLY ONE WORD — RETRIEVE, WEB, or RESPOND:"
 )
@@ -64,9 +49,6 @@ DECISION_PROMPT_TEMPLATE = (
 
 # ---------------------------------------------------------------------------
 # 3. QUERY REPHRASING
-#    Used by: expand_query_node (when chat history exists)
-#    Purpose: Resolve co-references in follow-up questions so they can be
-#             used as standalone search queries.
 # ---------------------------------------------------------------------------
 
 REPHRASE_SYSTEM = (
@@ -76,7 +58,7 @@ REPHRASE_SYSTEM = (
     "CRITICAL RULES:\n"
     "1. Output ONLY the short 1-sentence search query (MAXIMUM 15 WORDS).\n"
     "2. DO NOT answer the question. DO NOT provide explanations, bullet points, or code.\n"
-    "3. Resolve pronouns (e.g. 'it', 'they') using the history.\n"
+    "3. Resolve pronouns (e.g. 'it', 'they', 'them') using the conversation history.\n"
     "4. If the question is already clear, return it word-for-word as-is."
 )
 
@@ -89,15 +71,13 @@ REPHRASE_PROMPT = ChatPromptTemplate.from_messages([
 
 # ---------------------------------------------------------------------------
 # 4. QUERY EXPANSION
-#    Used by: expand_query_node
-#    Purpose: Generate 2 alternative phrasings to increase retrieval recall.
 # ---------------------------------------------------------------------------
 
 QUERY_EXPANSION_SYSTEM = (
     "You are an expert search assistant. "
     "Your task is to generate 2 alternative phrasings or search query variations "
     "for the user's input question to help retrieve the most relevant sections "
-    "from a technical document corpus.\n\n"
+    "from the document corpus.\n\n"
     "Look at the underlying semantic intent or meaning of the question and "
     "produce variations that explore different angles.\n\n"
     "Respond with ONLY the variations, one per line. "
@@ -111,9 +91,7 @@ QUERY_EXPANSION_PROMPT = ChatPromptTemplate.from_messages([
 
 
 # ---------------------------------------------------------------------------
-# 5. DOCUMENT GRADING  (kept for potential future re-enablement)
-#    Used by: grade_documents_node (currently bypassed for performance)
-#    Purpose: Filter out irrelevant retrieved chunks before generation.
+# 5. DOCUMENT GRADING
 # ---------------------------------------------------------------------------
 
 DOCUMENT_GRADER_SYSTEM = (
@@ -133,19 +111,16 @@ DOCUMENT_GRADER_PROMPT = ChatPromptTemplate.from_messages([
 
 
 # ---------------------------------------------------------------------------
-# 6. RAG GENERATION
-#    Used by: generate_node
-#    Purpose: Synthesize a final answer from retrieved document chunks,
-#             respecting chat history for coherent multi-turn dialogue.
+# 6. UNIVERSAL RAG GENERATION
 # ---------------------------------------------------------------------------
 
 GENERATION_SYSTEM = (
-    "You are an interactive, intelligent, and precise AI Technical Assistant.\n\n"
+    "You are an intelligent, precise, and professional enterprise AI assistant.\n\n"
     "Instructions:\n"
-    "1. Format your response using clean Markdown with distinct line breaks (\\n\\n) between sections, headers (###), bullet points, and code blocks.\n"
-    "2. If retrieved document context is provided below, synthesize your answer directly from those documents.\n"
-    "3. If the user is asking a general technical topic or conversational question, provide a clear, helpful, structured answer.\n"
-    "4. Keep responses well-spaced, professional, and easy to read."
+    "1. Synthesize a comprehensive, clear, and accurate answer strictly based on the provided Retrieved Document Context below.\n"
+    "2. Structure your response using clean Markdown with distinct paragraph line breaks (\\n\\n), section headers (###), bold key terms, and bullet points.\n"
+    "3. Highlight key statistics, metrics, company details, services, or technical steps clearly.\n"
+    "4. Maintain a professional, helpful tone and do not hallucinate details beyond the provided context."
 )
 
 GENERATION_PROMPT = ChatPromptTemplate.from_messages([

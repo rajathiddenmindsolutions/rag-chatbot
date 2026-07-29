@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import structlog
 from docling_core.types.doc import DoclingDocument
 
 logger = structlog.get_logger(__name__)
@@ -22,29 +23,25 @@ def parse_pdf_to_docling(pdf_path: Path, output_dir: Path) -> tuple[DoclingDocum
     # Configure memory-efficient pipeline options (disable layout/OCR models)
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = False
-    pipeline_options.do_table_structure = False
-    pipeline_options.generate_page_images = False
-    pipeline_options.generate_picture_images = False
-    converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-        }
-    )
-    
-    # Run conversion
-    result = converter.convert(pdf_path)
+    pipeline_options.do_table_structure = True
+
+    format_options = {
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+    }
+
+    converter = DocumentConverter(format_options=format_options)
+    result = converter.convert(str(pdf_path))
+
     doc = result.document
-    
-    # Export to markdown
-    markdown_text = doc.export_to_markdown()
-    
-    # Save structured JSON
-    output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = output_dir / f"{pdf_path.stem}_docling.json"
-    
-    # DoclingDocument supports serialization
+    md_text = doc.export_to_markdown()
+
+    # Save JSON output
+    json_filename = pdf_path.stem + ".json"
+    json_path = output_dir / json_filename
+
+    doc_dict = doc.export_to_dict()
     with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(doc.model_dump(), f, ensure_ascii=False, indent=2)
-        
-    logger.info("pdf_parsing_completed", json_path=str(json_path))
-    return doc, markdown_text, json_path
+        json.dump(doc_dict, f, indent=2, ensure_ascii=False)
+
+    logger.info("pdf_parsing_complete", pdf_path=str(pdf_path), json_path=str(json_path))
+    return doc, md_text, json_path

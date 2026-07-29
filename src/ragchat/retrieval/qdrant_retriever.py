@@ -6,6 +6,7 @@ Keeps OpenSearch code 100% untouched.
 from typing import List, Dict, Any
 import structlog
 from qdrant_client import QdrantClient, models
+from langchain_core.documents import Document
 
 from ragchat.config import settings
 
@@ -24,30 +25,38 @@ async def search_qdrant_hybrid(
     query_vector: List[float],
     top_k: int = 5,
     collection_name: str = "chunks",
-) -> List[Dict[str, Any]]:
-    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud."""
+) -> List[Document]:
+    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud and returns LangChain Documents."""
     client = get_qdrant_client()
 
     try:
-        # Perform Dense Vector Search
         results = client.search(
             collection_name=collection_name,
             query_vector=query_vector,
             limit=top_k,
         )
 
-        chunks = []
+        documents = []
         for hit in results:
             payload = hit.payload or {}
-            chunks.append({
-                "text": payload.get("text", ""),
-                "score": hit.score,
-                "metadata": payload.get("metadata", {}),
-                "doc_title": payload.get("doc_title", "Document"),
-            })
+            text = payload.get("text", "")
+            doc_title = payload.get("doc_title", "Document")
+            meta = payload.get("metadata", {})
 
-        logger.info("qdrant_search_completed", query=query, count=len(chunks))
-        return chunks
+            doc = Document(
+                page_content=text,
+                metadata={
+                    "document_id": str(hit.id),
+                    "chunk_id": str(hit.id),
+                    "title": doc_title,
+                    "score": hit.score,
+                    "section_path": meta.get("section_path", "root"),
+                }
+            )
+            documents.append(doc)
+
+        logger.info("qdrant_search_completed", query=query, count=len(documents))
+        return documents
     except Exception as exc:
         logger.error("qdrant_search_failed", error=str(exc))
         return []

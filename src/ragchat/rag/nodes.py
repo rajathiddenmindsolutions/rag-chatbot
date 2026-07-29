@@ -196,18 +196,30 @@ async def retrieve_node(state: RAGState) -> RAGState:
     strategy = state.get("chunking_strategy", "structural")
     provider = state.get("provider")
 
-    client = get_opensearch_client()
-    embeddings = LocalEmbeddings()
-    retriever = OpenSearchHybridRetriever(
-        client=client,
-        embeddings_model=embeddings,
-        chunking_strategy=strategy,
-        top_k=5,
-    )
+    # Check if Qdrant Cloud is configured
+    qdrant_url = getattr(settings, "qdrant_url", None)
+    
+    if qdrant_url and "qdrant" in qdrant_url.lower():
+        from ragchat.retrieval.qdrant_retriever import search_qdrant_hybrid
+        embeddings = LocalEmbeddings()
+        query_vector = embeddings.embed_query(primary_query)
+        initial_chunks = await search_qdrant_hybrid(primary_query, query_vector, top_k=5)
+    else:
+        client = get_opensearch_client()
+        embeddings = LocalEmbeddings()
+        retriever = OpenSearchHybridRetriever(
+            client=client,
+            embeddings_model=embeddings,
+            chunking_strategy=strategy,
+            top_k=5,
+        )
 
-    try:
-        # Step 1: Fast initial retrieval with primary query
-        initial_chunks = await retriever.ainvoke(primary_query)
+        try:
+            # Step 1: Fast initial retrieval with primary query
+            initial_chunks = await retriever.ainvoke(primary_query)
+        except Exception as os_exc:
+            logger.warning("opensearch_failed_attempting_qdrant", error=str(os_exc))
+            initial_chunks = []
 
         # Step 2: Conditional Query Expansion (Paid ONLY if initial retrieval is thin)
         if len(initial_chunks) < 3:

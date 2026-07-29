@@ -43,19 +43,24 @@ app.include_router(openai_compat_router, tags=["OpenAI Compatibility"])
 @app.on_event("startup")
 async def on_startup():
     logger.info("api_startup_sequence_initiated", host=settings.api_host, port=settings.api_port)
-    # Pre-warm the embedding model singleton so the first user query
-    # does not pay the 6-7 second model load penalty.
     import asyncio
-    from ragchat.search.opensearch_client import get_opensearch_client, ensure_index_exists
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, get_embedding_model)
-    logger.info("embedding_model_warmed_up")
+    # Try pre-warming local embedding model if available
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, get_embedding_model)
+        logger.info("embedding_model_warmed_up")
+    except Exception as emb_exc:
+        logger.warning("embedding_model_warmup_skipped", error=str(emb_exc))
 
-    # Ensure OpenSearch index exists with knn_vector mapping
-    os_client = get_opensearch_client()
-    await ensure_index_exists(os_client)
-    await os_client.close()
+    # Try ensuring OpenSearch index exists if running locally
+    try:
+        from ragchat.search.opensearch_client import get_opensearch_client, ensure_index_exists
+        os_client = get_opensearch_client()
+        await ensure_index_exists(os_client)
+        await os_client.close()
+    except Exception as os_exc:
+        logger.warning("opensearch_startup_check_skipped", error=str(os_exc))
 
 
 @app.on_event("shutdown")

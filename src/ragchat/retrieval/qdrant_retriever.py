@@ -1,11 +1,9 @@
 """Separate Qdrant Hybrid & Semantic Retriever for 24/7 Free Cloud Deployment.
-
-Keeps OpenSearch code 100% untouched.
 """
 
-from typing import List, Dict, Any
+from typing import List
 import structlog
-from qdrant_client import QdrantClient, models
+from qdrant_client import QdrantClient
 from langchain_core.documents import Document
 
 from ragchat.config import settings
@@ -26,18 +24,27 @@ async def search_qdrant_hybrid(
     top_k: int = 5,
     collection_name: str = "chunks",
 ) -> List[Document]:
-    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud and returns LangChain Documents."""
+    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud."""
     client = get_qdrant_client()
 
     try:
-        results = client.search(
-            collection_name=collection_name,
-            query_vector=query_vector,
-            limit=top_k,
-        )
+        # Compatible with all QdrantClient versions (query_points / search)
+        if hasattr(client, "query_points"):
+            res = client.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                limit=top_k,
+            )
+            hits = res.points
+        else:
+            hits = client.search(
+                collection_name=collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+            )
 
         documents = []
-        for hit in results:
+        for hit in hits:
             payload = hit.payload or {}
             text = payload.get("text", "")
             doc_title = payload.get("doc_title", "Document")
@@ -49,7 +56,7 @@ async def search_qdrant_hybrid(
                     "document_id": str(hit.id),
                     "chunk_id": str(hit.id),
                     "title": doc_title,
-                    "score": hit.score,
+                    "score": getattr(hit, "score", 1.0),
                     "section_path": meta.get("section_path", "root"),
                 }
             )

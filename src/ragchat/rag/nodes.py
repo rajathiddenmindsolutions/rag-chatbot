@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
+from ragchat.config import settings
 from ragchat.llm.chat_models import get_chat_model
 from ragchat.rag.prompt_templates import (
     CASUAL_PROMPT,
@@ -196,30 +197,24 @@ async def retrieve_node(state: RAGState) -> RAGState:
     strategy = state.get("chunking_strategy", "structural")
     provider = state.get("provider")
 
-    # Check if Qdrant Cloud is configured
     qdrant_url = getattr(settings, "qdrant_url", None)
-    
-    if qdrant_url and "qdrant" in qdrant_url.lower():
-        from ragchat.retrieval.qdrant_retriever import search_qdrant_hybrid
-        embeddings = LocalEmbeddings()
-        query_vector = embeddings.embed_query(primary_query)
-        initial_chunks = await search_qdrant_hybrid(primary_query, query_vector, top_k=5)
-    else:
-        client = get_opensearch_client()
-        embeddings = LocalEmbeddings()
-        retriever = OpenSearchHybridRetriever(
-            client=client,
-            embeddings_model=embeddings,
-            chunking_strategy=strategy,
-            top_k=5,
-        )
 
-        try:
-            # Step 1: Fast initial retrieval with primary query
+    try:
+        if qdrant_url and "qdrant" in qdrant_url.lower():
+            from ragchat.retrieval.qdrant_retriever import search_qdrant_hybrid
+            embeddings = LocalEmbeddings()
+            query_vector = embeddings.embed_query(primary_query)
+            initial_chunks = await search_qdrant_hybrid(primary_query, query_vector, top_k=5)
+        else:
+            client = get_opensearch_client()
+            embeddings = LocalEmbeddings()
+            retriever = OpenSearchHybridRetriever(
+                client=client,
+                embeddings_model=embeddings,
+                chunking_strategy=strategy,
+                top_k=5,
+            )
             initial_chunks = await retriever.ainvoke(primary_query)
-        except Exception as os_exc:
-            logger.warning("opensearch_failed_attempting_qdrant", error=str(os_exc))
-            initial_chunks = []
 
         # Step 2: Conditional Query Expansion (Paid ONLY if initial retrieval is thin)
         if len(initial_chunks) < 3:
@@ -236,7 +231,11 @@ async def retrieve_node(state: RAGState) -> RAGState:
                 ]
                 extra_queries = [v for v in variations if v][:2]
                 if extra_queries:
-                    extra_results = await asyncio.gather(*[retriever.ainvoke(q) for q in extra_queries])
+                    if qdrant_url and "qdrant" in qdrant_url.lower():
+                        extra_vectors = [embeddings.embed_query(q) for q in extra_queries]
+                        extra_results = await asyncio.gather(*[search_qdrant_hybrid(q, v, top_k=5) for q, v in zip(extra_queries, extra_vectors)])
+                    else:
+                        extra_results = await asyncio.gather(*[retriever.ainvoke(q) for q in extra_queries])
                     for doc_list in extra_results:
                         initial_chunks.extend(doc_list)
             except Exception as exp_exc:
@@ -246,19 +245,17 @@ async def retrieve_node(state: RAGState) -> RAGState:
         seen_ids = set()
         deduped_chunks = []
         for doc in initial_chunks:
-            chunk_id = doc.metadata["chunk_id"]
+            chunk_id = doc.metadata.get("chunk_id", str(hash(doc.page_content)))
             if chunk_id not in seen_ids:
                 seen_ids.add(chunk_id)
                 deduped_chunks.append(doc)
 
         final_chunks = deduped_chunks[:5]
 
-        # ── Serper.dev Google Search Tool Fallback ──────────────────────────────
+        # Serper.dev Google Search Tool Fallback
         if not final_chunks:
             from ragchat.search.web_search import search_google_serper
-            from langchain_core.documents import Document
-
-            logger.info("opensearch_0_chunks_triggering_google_serper_search", query=primary_query)
+            logger.info("0_chunks_triggering_google_serper_search", query=primary_query)
             web_results = await search_google_serper(primary_query)
 
             if web_results:
@@ -270,8 +267,6 @@ async def retrieve_node(state: RAGState) -> RAGState:
                             "chunk_id": item["link"],
                             "title": f"🌐 {item['title']}",
                             "section_path": item["link"],
-                            "chunk_index": 0,
-                            "chunking_strategy": "web_search",
                             "score": 1.0,
                         }
                     )
@@ -281,12 +276,10 @@ async def retrieve_node(state: RAGState) -> RAGState:
                 logger.info("web_search_chunks_assembled", count=len(final_chunks))
 
         logger.info("retrieval_completed", total_retrieved=len(deduped_chunks), final_kept=len(final_chunks))
-
-        await client.close()
         return {**state, "retrieved_chunks": final_chunks}
+
     except Exception as exc:
         logger.error("retrieval_failed", error=str(exc))
-        await client.close()
         return {**state, "retrieved_chunks": []}
 
 

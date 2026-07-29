@@ -1,58 +1,76 @@
-"""SentenceTransformers local embedding wrapper conforming to LangChain Embeddings.
-
-Key design: The SentenceTransformer model is loaded ONCE at module level as a
-process-wide singleton. This avoids the 6-7 second reload penalty that occurred
-when LocalEmbeddings() was instantiated per-request inside retrieve_node.
+"""Embedding module supporting Local BAAI/bge-small-en-v1.5 and Production Google Gemini API Embeddings.
 """
 
+from typing import List
+import structlog
 from langchain_core.embeddings import Embeddings
-from sentence_transformers import SentenceTransformer
 
 from ragchat.config import settings
 
-import structlog
-
 logger = structlog.get_logger(__name__)
 
-# ─── Process-wide singleton ───────────────────────────────────────────────────
-# Loaded once when the module is first imported (at server startup).
-# All subsequent calls to LocalEmbeddings.embed_query / embed_documents reuse
-# this single in-memory model — eliminating the per-request HuggingFace reload.
-_EMBEDDING_MODEL: SentenceTransformer | None = None
+_LOCAL_MODEL = None
 
 
-def get_embedding_model() -> SentenceTransformer:
-    """Return the shared SentenceTransformer model, loading it once if needed."""
-    global _EMBEDDING_MODEL
-    if _EMBEDDING_MODEL is None:
-        logger.info("loading_embedding_model", model=settings.embedding_model)
-        _EMBEDDING_MODEL = SentenceTransformer(settings.embedding_model)
-        logger.info("embedding_model_loaded", model=settings.embedding_model)
-    return _EMBEDDING_MODEL
-
-
-# ─────────────────────────────────────────────────────────────────────────────
+def get_embedding_model():
+    """Return local SentenceTransformer model singleton."""
+    global _LOCAL_MODEL
+    if _LOCAL_MODEL is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info("loading_local_bge_embedding_model", model=settings.embedding_model)
+        _LOCAL_MODEL = SentenceTransformer(settings.embedding_model)
+        logger.info("local_bge_embedding_model_loaded", model=settings.embedding_model)
+    return _LOCAL_MODEL
 
 
 class LocalEmbeddings(Embeddings):
-    """Wrapper around the shared SentenceTransformer singleton with Layer 2 caching."""
+    """Router for local BAAI embeddings vs Production Google Gemini API embeddings."""
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of document strings."""
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
+
+        # Production / Gemini Cloud Routing
+        if getattr(settings, "app_env", "dev").lower() in ("prod", "production"):
+            try:
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                api_key = settings.google_api_key or getattr(settings, "gemni_api_key", None)
+                gemini_embed = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-2-preview",
+                    google_api_key=api_key,
+                )
+                return gemini_embed.embed_documents(texts)
+            except Exception as exc:
+                logger.warning("gemini_embedding_failed_using_local_fallback", error=str(exc))
+
+        # Local Execution (Default BAAI/bge-small-en-v1.5)
         model = get_embedding_model()
         embeddings = model.encode(texts, convert_to_numpy=True)
         return embeddings.tolist()
 
-    def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string with Layer 2 caching."""
+    def embed_query(self, text: str) -> List[float]:
         from ragchat.cache.rag_cache import rag_cache
 
         cached_vector = rag_cache.get_embedding(text)
         if cached_vector is not None:
             return cached_vector
 
+        # Production / Gemini Cloud Routing
+        if getattr(settings, "app_env", "dev").lower() in ("prod", "production"):
+            try:
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                api_key = settings.google_api_key or getattr(settings, "gemni_api_key", None)
+                gemini_embed = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-2-preview",
+                    google_api_key=api_key,
+                )
+                embedding = gemini_embed.embed_query(text)
+                rag_cache.set_embedding(text, embedding)
+                return embedding
+            except Exception as exc:
+                logger.warning("gemini_embedding_failed_using_local_fallback", error=str(exc))
+
+        # Local Execution (Default BAAI/bge-small-en-v1.5)
         model = get_embedding_model()
         embedding = model.encode(text, convert_to_numpy=True).tolist()
         rag_cache.set_embedding(text, embedding)

@@ -5,7 +5,7 @@ description = "RAG chatbot: Docling + Postgres + OpenSearch hybrid search + Groq
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-#    "docling>=2.0.0",
+    "docling-core>=2.0.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "gradio>=4.44.0",

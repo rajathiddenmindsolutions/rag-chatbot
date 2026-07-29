@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "docling-core>=2.0.0",
+    "fastembed>=0.3.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "gradio>=4.44.0",

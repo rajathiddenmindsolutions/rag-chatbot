@@ -7,7 +7,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://rag-chatbot-6wk8.onrender.com/api';
 
 interface Citation {
   chunk_id: string;

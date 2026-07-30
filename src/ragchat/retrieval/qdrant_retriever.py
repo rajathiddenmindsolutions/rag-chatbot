@@ -23,8 +23,9 @@ async def search_qdrant_hybrid(
     query_vector: List[float],
     top_k: int = 5,
     collection_name: str = "chunks",
+    score_threshold: float = 0.35,
 ) -> List[Document]:
-    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud."""
+    """Executes 20ms Hybrid & Semantic Search on Qdrant Cloud with minimum relevance score thresholding."""
     client = get_qdrant_client()
 
     try:
@@ -34,6 +35,7 @@ async def search_qdrant_hybrid(
                 collection_name=collection_name,
                 query=query_vector,
                 limit=top_k,
+                score_threshold=score_threshold,
             )
             hits = res.points
         else:
@@ -41,6 +43,7 @@ async def search_qdrant_hybrid(
                 collection_name=collection_name,
                 query_vector=query_vector,
                 limit=top_k,
+                score_threshold=score_threshold,
             )
 
         documents = []
@@ -50,13 +53,14 @@ async def search_qdrant_hybrid(
             doc_title = payload.get("doc_title", "Document")
             meta = payload.get("metadata", {})
 
+            score_val = getattr(hit, "score", 1.0)
             doc = Document(
                 page_content=text,
                 metadata={
                     "document_id": str(hit.id),
                     "chunk_id": str(hit.id),
                     "title": doc_title,
-                    "score": getattr(hit, "score", 1.0),
+                    "score": score_val if score_val is not None else 1.0,
                     "section_path": meta.get("section_path", "root"),
                 }
             )

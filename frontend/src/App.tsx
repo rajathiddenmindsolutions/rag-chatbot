@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   FiPlus, FiSend, FiFileText, 
   FiLayers, FiDatabase, 
-  FiChevronDown, FiChevronRight, FiMenu, FiX, FiCornerDownRight,
-  FiSearch, FiCopy, FiVolume2, FiThumbsUp, FiThumbsDown, FiRefreshCw, FiShare2, FiFolder, FiMoreHorizontal
+  FiChevronDown, FiMenu, FiX, FiCornerDownRight,
+  FiCopy, FiVolume2, FiThumbsUp, FiThumbsDown, FiRefreshCw, FiShare2, FiMoreHorizontal
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -45,9 +45,6 @@ export function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [_, setCitations] = useState<Citation[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [expandedCitation, setExpandedCitation] = useState<string | null>(null);
   const [showDocModal, setShowDocModal] = useState(false);
@@ -76,35 +73,6 @@ export function App() {
       }
     } catch (err) {
       console.error('Failed to fetch documents', err);
-    }
-  };
-
-  const handleFileUpload = async () => {
-    if (!uploadFile) return;
-    setUploading(true);
-    setUploadStatus('Uploading & Indexing PDF...');
-    const formData = new FormData();
-    formData.append('file', uploadFile);
-    formData.append('strategy', strategy);
-
-    try {
-      const res = await fetch(`${API_URL}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (res.ok) {
-        setUploadStatus('✅ Indexed successfully!');
-        setUploadFile(null);
-        fetchDocuments();
-        setTimeout(() => setUploadStatus(''), 3000);
-      } else {
-        const err = await res.json();
-        setUploadStatus(`❌ Upload failed: ${err.detail || 'Error'}`);
-      }
-    } catch (err) {
-      setUploadStatus('❌ Connection error to backend.');
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -258,23 +226,8 @@ export function App() {
               <span>New Chat</span>
             </button>
 
-            {/* Navigation Quick Links */}
-            <div className="space-y-0.5 text-xs text-[#b4b4b4]">
-              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-[#222222] cursor-pointer">
-                <FiSearch className="w-3.5 h-3.5" />
-                <span>Search</span>
-              </div>
-              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-[#222222] cursor-pointer">
-                <FiFileText className="w-3.5 h-3.5" />
-                <span>Notes</span>
-              </div>
-              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-[#222222] cursor-pointer">
-                <FiFolder className="w-3.5 h-3.5" />
-                <span>Workspace</span>
-              </div>
-            </div>
-
-            {/* Knowledge Base Status & Fast Ingestion */}
+            {/* Knowledge Base Status (Commented out as requested) */}
+            {/* 
             <div className="bg-[#1f1f1f] rounded-xl p-2.5 border border-[#2c2c2c] space-y-2 text-xs">
               <div className="flex items-center justify-between text-[#b4b4b4]">
                 <span className="flex items-center gap-1.5 font-semibold text-white">
@@ -291,28 +244,8 @@ export function App() {
                 <span className="truncate">Manage Documents</span>
                 <FiChevronRight className="w-3 h-3 text-[#8e8e8e]" />
               </button>
-              
-              <div className="pt-1 border-t border-[#2c2c2c]">
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-[11px] text-[#b4b4b4] file:mr-2 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-[#10a37f] file:text-white cursor-pointer"
-                />
-                {uploadFile && (
-                  <button
-                    onClick={handleFileUpload}
-                    disabled={uploading}
-                    className="w-full mt-1.5 py-1 bg-[#10a37f] hover:bg-[#1a7f64] text-white text-[11px] font-medium rounded transition flex items-center justify-center"
-                  >
-                    {uploading ? 'Indexing...' : 'Upload & Index PDF'}
-                  </button>
-                )}
-                {uploadStatus && (
-                  <p className="text-[10px] text-[#10a37f] mt-1 font-mono">{uploadStatus}</p>
-                )}
-              </div>
             </div>
+            */}
 
             {/* Conversation History */}
             <div className="flex-1 overflow-y-auto space-y-3 pt-1 pr-1 text-xs">
@@ -326,14 +259,6 @@ export function App() {
                   <FiMoreHorizontal className="w-3.5 h-3.5 text-[#8e8e8e]" />
                 </div>
               </div>
-            </div>
-
-            {/* Bottom Left User Profile: Rajat */}
-            <div className="pt-2 border-t border-[#262626] flex items-center gap-2.5 px-2">
-              <div className="w-6 h-6 rounded-full bg-[#ea580c] text-white flex items-center justify-center font-bold text-xs">
-                R
-              </div>
-              <span className="text-xs font-medium text-white truncate">Rajat</span>
             </div>
 
           </div>

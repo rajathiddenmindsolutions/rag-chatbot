@@ -59,7 +59,8 @@ REPHRASE_SYSTEM = (
     "1. Output ONLY the short 1-sentence search query (MAXIMUM 15 WORDS).\n"
     "2. DO NOT answer the question. DO NOT provide explanations, bullet points, or code.\n"
     "3. Resolve pronouns (e.g. 'it', 'they', 'them') using the conversation history.\n"
-    "4. If the question is already clear, return it word-for-word as-is."
+    "4. If the question is already clear, return it word-for-word as-is.\n"
+    "5. NEVER answer the question in the output query. NEVER convert a question into an answer statement. Always maintain the user's inquiry as a clean search query."
 )
 
 REPHRASE_PROMPT = ChatPromptTemplate.from_messages([

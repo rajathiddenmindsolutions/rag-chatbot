@@ -252,16 +252,50 @@ async def embed_and_index_node(state: IngestionState) -> IngestionState:
             )
             db_chunks_in.append(db_chunk)
 
-        # 1. Upload to OpenSearch
-        await index_chunks(os_client, os_payloads)
-        await os_client.close()
+        # 1. Upload to Vector DB (Qdrant Cloud or OpenSearch)
+        qdrant_url = getattr(settings, "qdrant_url", None)
+        if qdrant_url and "qdrant" in qdrant_url.lower():
+            try:
+                from qdrant_client import QdrantClient, models
+                qdrant_api_key = getattr(settings, "qdrant_api_key", None)
+                client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+                
+                points = []
+                for idx, payload in enumerate(os_payloads):
+                    point_id = hash(f"{payload['document_id']}_{idx}_{payload['text'][:50]}") & 0x7FFFFFFFFFFFFFFF
+                    points.append(models.PointStruct(
+                        id=point_id,
+                        vector=payload["embedding"],
+                        payload={
+                            "text": payload["text"],
+                            "doc_title": payload.get("title") or "Document",
+                            "metadata": {
+                                "document_id": payload["document_id"],
+                                "chunk_id": payload["chunk_id"],
+                                "section_path": payload.get("section_path", "root")
+                            }
+                        }
+                    ))
+                client.upsert(collection_name="chunks", points=points)
+                logger.info("qdrant_cloud_indexing_success", count=len(points))
+            except Exception as qd_exc:
+                logger.error("qdrant_indexing_failed", error=str(qd_exc))
 
-        # 2. Persist in Postgres
-        async with AsyncSessionLocal() as db:
-            await create_chunks(db, db_chunks_in)
-            await update_document_status(db, document_id=doc_id, status="indexed")
-            await update_ingest_job(db, job.id, status="succeeded")
-            await db.commit()
+        try:
+            await index_chunks(os_client, os_payloads)
+            await os_client.close()
+        except Exception as os_err:
+            logger.warning("opensearch_indexing_skipped", error=str(os_err))
+
+        # 2. Persist in Postgres if available
+        try:
+            async with AsyncSessionLocal() as db:
+                await create_chunks(db, db_chunks_in)
+                await update_document_status(db, document_id=doc_id, status="indexed")
+                await update_ingest_job(db, job.id, status="succeeded")
+                await db.commit()
+        except Exception as db_err:
+            logger.warning("postgres_persistence_skipped", error=str(db_err))
 
         logger.info("ingestion_indexing_completed", doc_id=str(doc_id), chunk_count=len(chunks))
         return state

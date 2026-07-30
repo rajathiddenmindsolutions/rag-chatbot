@@ -164,7 +164,7 @@ async def stream_rag(request: QueryRequest):
                 chain = CASUAL_PROMPT | llm
                 async for chunk in chain.astream({
                     "chat_history": langchain_history,
-                    "question": rephrased_query,
+                    "question": request.query,
                 }):
                     text_chunk = _extract_text_content(chunk.content)
                     if text_chunk:
